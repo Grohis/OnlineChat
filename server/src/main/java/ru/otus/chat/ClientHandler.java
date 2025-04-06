@@ -89,7 +89,8 @@ public class ClientHandler {
                             if (targetClient != null) {
                                 targetClient.sendMsg("Вы были отключены администратором");
                                 targetClient.disconnect();
-                                sendMsg("Пользователь " + targetUsername + " был отключен.");
+                                sendMsg("Вы отключили пользователя " + targetUsername + " от чата.");
+                                server.broadcastMessage("[ADMIN] Пользователь " + targetUsername + " был отключен от нашего чата.");
                             } else {
                                 sendMsg("Пользователь с таким именем не найден.");
                             }
