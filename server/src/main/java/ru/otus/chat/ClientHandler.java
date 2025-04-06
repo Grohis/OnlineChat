@@ -13,12 +13,16 @@ public class ClientHandler {
 
     private String username;
     private boolean authenticated;
+    private Role role;
+
+    public enum Role {USER, ADMIN}
 
     public ClientHandler(Socket socket, Server server) throws IOException {
         this.socket = socket;
         this.server = server;
         this.in = new DataInputStream(socket.getInputStream());
         this.out = new DataOutputStream(socket.getOutputStream());
+        this.role = Role.USER;
 
         new Thread(() -> {
             try {
@@ -70,6 +74,27 @@ public class ClientHandler {
                             break;
                         }
 
+                        if (message.startsWith("/kick ")) {
+                            if (getRole() != Role.ADMIN) {
+                                sendMsg("У вас нет прав для выполнения этой команды.");
+                                continue;
+                            }
+                            String[] elements = message.split(" ");
+                            if (elements.length < 2) {
+                                sendMsg("Неверный формат команды /kick username");
+                                continue;
+                            }
+                            String targetUsername = elements[1];
+                            ClientHandler targetClient = server.getClientByUsername(targetUsername);
+                            if (targetClient != null) {
+                                targetClient.sendMsg("Вы были отключены администратором");
+                                targetClient.disconnect();
+                                sendMsg("Пользователь " + targetUsername + " был отключен.");
+                            } else {
+                                sendMsg("Пользователь с таким именем не найден.");
+                            }
+                        }
+
                     } else {
                         server.broadcastMessage(username + ": " + message);
                     }
@@ -80,6 +105,14 @@ public class ClientHandler {
                 disconnect();
             }
         }).start();
+    }
+
+    public Role getRole() {
+        return role;
+    }
+
+    public void setRole(Role role) {
+        this.role = role;
     }
 
     public void sendMsg(String message) {
