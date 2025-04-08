@@ -69,7 +69,15 @@ public class ClientHandler {
                             sendMsg("/exitok");
                             break;
                         }
-
+                    }
+                    if (message.startsWith("/w")) {
+                        String[] elements = message.split(" ", 3);
+                        if (elements.length < 3) {
+                            sendMsg("Неверный формат команды. Используйте: /w username message");
+                            continue;
+                        }
+                        server.sendPrivateMessage(elements[1], elements[2], this);
+                        continue;
                     } else {
                         server.broadcastMessage(username + ": " + message);
                     }
