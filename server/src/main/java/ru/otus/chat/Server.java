@@ -56,6 +56,15 @@ public class Server {
         return false;
     }
 
+    public ClientHandler getClientByUsername(String username){
+        for (ClientHandler client : clients){
+            if (client.getUsername().equals(username))
+                return client;
+        }
+        return null;
+    }
+
+
     public void sendPrivateMessage(String recipient, String message, ClientHandler sender) {
         for (ClientHandler client : clients) {
             if (client.getUsername().equals(recipient)) {
