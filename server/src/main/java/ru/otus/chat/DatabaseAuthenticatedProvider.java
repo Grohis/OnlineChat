@@ -15,12 +15,11 @@ public class DatabaseAuthenticatedProvider implements AuthenticatedProvider {
     @Override
     public void initialize() {
         try {
-            // Подключение к локальной PostgreSQL
             Class.forName("org.postgresql.Driver");
             connection = DriverManager.getConnection(
-                    "jdbc:postgresql://localhost:5432/chat_db", // Имя базы
-                    "postgres",                                 // Пользователь
-                    "yourpassword"                              // Пароль
+                    "jdbc:postgresql://localhost:5432/OnlineChat_DB",
+                    "admin",
+                    "admin"
             );
             System.out.println("PostgreSQL подключение установлено!");
         } catch (Exception e) {
@@ -77,7 +76,7 @@ public class DatabaseAuthenticatedProvider implements AuthenticatedProvider {
             ResultSet rs = stmt.executeQuery();
             if (rs.next()) {
                 String roleName = rs.getString("role_name");
-                return ClientHandler.Role.valueOf(roleName.toUpperCase()); // должно совпадать с Enum!
+                return ClientHandler.Role.valueOf(roleName.toUpperCase());
             }
         } catch (SQLException e) {
             e.printStackTrace();
@@ -131,7 +130,6 @@ public class DatabaseAuthenticatedProvider implements AuthenticatedProvider {
             stmt.setString(3, username);
             stmt.executeUpdate();
 
-            // Здесь роль по умолчанию можно назначить
             assignDefaultRole(username);
 
             clientHandler.setUsername(username);
@@ -146,7 +144,6 @@ public class DatabaseAuthenticatedProvider implements AuthenticatedProvider {
 
     private void assignDefaultRole(String username) {
         try {
-            // Получаем id пользователя
             String getUserIdSql = "SELECT id FROM users WHERE username = ?";
             PreparedStatement stmt1 = connection.prepareStatement(getUserIdSql);
             stmt1.setString(1, username);
@@ -154,7 +151,6 @@ public class DatabaseAuthenticatedProvider implements AuthenticatedProvider {
             if (rs.next()) {
                 int userId = rs.getInt("id");
 
-                // Получаем id роли USER
                 String getRoleIdSql = "SELECT id FROM roles WHERE role_name = 'USER'";
                 PreparedStatement stmt2 = connection.prepareStatement(getRoleIdSql);
                 ResultSet rs2 = stmt2.executeQuery();
@@ -162,7 +158,6 @@ public class DatabaseAuthenticatedProvider implements AuthenticatedProvider {
                 if (rs2.next()) {
                     int roleId = rs2.getInt("id");
 
-                    // Записываем в users_roles
                     String insertSql = "INSERT INTO users_roles (user_id, role_id) VALUES (?, ?)";
                     PreparedStatement stmt3 = connection.prepareStatement(insertSql);
                     stmt3.setInt(1, userId);
