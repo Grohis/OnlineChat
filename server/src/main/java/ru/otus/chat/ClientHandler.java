@@ -75,27 +75,36 @@ public class ClientHandler {
                         }
 
                         if (message.startsWith("/kick ")) {
-                            if (getRole() != Role.ADMIN) {
-                                sendMsg("У вас нет прав для выполнения этой команды.");
-                                continue;
-                            }
-                            String[] elements = message.split(" ");
-                            if (elements.length < 2) {
-                                sendMsg("Неверный формат команды /kick username");
-                                continue;
-                            }
-                            String targetUsername = elements[1];
-                            ClientHandler targetClient = server.getClientByUsername(targetUsername);
-                            if (targetClient != null) {
-                                targetClient.sendMsg("Вы были отключены администратором");
-                                targetClient.disconnect();
-                                sendMsg("Вы отключили пользователя " + targetUsername + " от чата.");
-                                server.broadcastMessage("[ADMIN] Пользователь " + targetUsername + " был отключен от нашего чата.");
-                            } else {
-                                sendMsg("Пользователь с таким именем не найден.");
-                            }
-                        }
+    if (getRole() != Role.ADMIN) {
+        sendMsg("У вас нет прав для выполнения этой команды.");
+        continue;
+    }
+    String[] elements = message.split(" ");
+    if (elements.length < 2) {
+        sendMsg("Неверный формат команды /kick username");
+        continue;
+    }
+    String targetUsername = elements[1];
+    ClientHandler targetClient = server.getClientByUsername(targetUsername);
+    if (targetClient != null) {
+        targetClient.sendMsg("Вы были отключены администратором");
+        targetClient.disconnect();
+        sendMsg("Вы отключили пользователя " + targetUsername + " от чата.");
+        server.broadcastMessage("[ADMIN] Пользователь " + targetUsername + " был отключен от нашего чата.");
+    } else {
+        sendMsg("Пользователь с таким именем не найден.");
+    }
+}
 
+if (message.startsWith("/w")) {
+    String[] elements = message.split(" ", 3);
+    if (elements.length < 3) {
+        sendMsg("Неверный формат команды. Используйте: /w username message");
+        continue;
+    }
+    server.sendPrivateMessage(elements[1], elements[2], this);
+    continue;
+}
                     } else {
                         server.broadcastMessage(username + ": " + message);
                     }

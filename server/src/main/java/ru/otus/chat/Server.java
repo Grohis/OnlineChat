@@ -65,6 +65,17 @@ public class Server {
     }
 
 
+    public void sendPrivateMessage(String recipient, String message, ClientHandler sender) {
+        for (ClientHandler client : clients) {
+            if (client.getUsername().equals(recipient)) {
+                client.sendMsg("[ЛС от " + sender.getUsername() + "]: " + message);
+                sender.sendMsg("[Вы -> " + recipient + "]: " + message);
+                return;
+            }
+        }
+        sender.sendMsg("Пользователь " + recipient + " не найден.");
+    }
+
     public AuthenticatedProvider getAuthenticatedProvider() {
         return authenticatedProvider;
     }
