@@ -14,7 +14,8 @@ public class Server {
     public Server(int port) {
         this.port = port;
         clients = new CopyOnWriteArrayList<>();
-        authenticatedProvider = new InMemoryAuthenticatedProvider(this);
+    //    authenticatedProvider = new InMemoryAuthenticatedProvider(this);  // мемори
+        authenticatedProvider = new DatabaseAuthenticatedProvider(this);  // DB
     }
 
     public void start() {
