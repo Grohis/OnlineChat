@@ -1,12 +1,28 @@
 package ru.otus.chat;
 
-import java.sql.*;
-import ru.otus.chat.ClientHandler;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 
 public class DatabaseAuthenticatedProvider implements AuthenticatedProvider {
 
+    private static final String DB_URL = "jdbc:postgresql://localhost:5432/OnlineChat_DB";
+    private static final String DB_USERNAME = "admin";
+    private static final String DB_PASSWORD = "admin";
+
+    private static final String SQL_AUTH = "SELECT u.username FROM users u WHERE u.login = ? AND u.password = ?";
+    private static final String SQL_CHECK_LOGIN = "SELECT 1 FROM users WHERE login = ?";
+    private static final String SQL_CHECK_USERNAME = "SELECT 1 FROM users WHERE username = ?";
+    private static final String SQL_INSERT_USER = "INSERT INTO users (login, password, username) VALUES (?, ?, ?)";
+    private static final String SQL_GET_ROLE =
+            "SELECT r.role FROM roles r " +
+                    "JOIN users_roles ur ON ur.role_id = r.id " +
+                    "JOIN users u ON ur.user_id = u.id " +
+                    "WHERE u.username = ?";
+
     private Server server;
-    private Connection connection;
 
     public DatabaseAuthenticatedProvider(Server server) {
         this.server = server;
@@ -14,163 +30,112 @@ public class DatabaseAuthenticatedProvider implements AuthenticatedProvider {
 
     @Override
     public void initialize() {
-        try {
-            Class.forName("org.postgresql.Driver");
-            connection = DriverManager.getConnection(
-                    "jdbc:postgresql://localhost:5432/OnlineChat_DB",
-                    "admin",
-                    "admin"
-            );
-            System.out.println("PostgreSQL подключение установлено!");
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    private String getUsernameByLoginAndPassword(String login, String password) {
-        String sql = "SELECT u.username FROM users u WHERE u.login = ? AND u.password = ?";
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
-            stmt.setString(1, login);
-            stmt.setString(2, password);
-            ResultSet rs = stmt.executeQuery();
-            if (rs.next()) {
-                return rs.getString("username");
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return null;
-    }
-
-    private boolean isLoginAlreadyExist(String login) {
-        String sql = "SELECT 1 FROM users WHERE login = ?";
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
-            stmt.setString(1, login);
-            ResultSet rs = stmt.executeQuery();
-            return rs.next();
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return false;
-    }
-
-    private boolean isUsernameAlreadyExist(String username) {
-        String sql = "SELECT 1 FROM users WHERE username = ?";
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
-            stmt.setString(1, username);
-            ResultSet rs = stmt.executeQuery();
-            return rs.next();
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return false;
-    }
-
-    private ClientHandler.Role getRoleByUsername(String username) {
-        String sql = "SELECT r.role_name FROM roles r " +
-                "JOIN users_roles ur ON r.id = ur.role_id " +
-                "JOIN users u ON ur.user_id = u.id " +
-                "WHERE u.username = ?";
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
-            stmt.setString(1, username);
-            ResultSet rs = stmt.executeQuery();
-            if (rs.next()) {
-                String roleName = rs.getString("role_name");
-                return ClientHandler.Role.valueOf(roleName.toUpperCase());
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return ClientHandler.Role.USER;
+        System.out.println("initialize DatabaseAuthenticatedProvider");
     }
 
     @Override
     public boolean authenticate(ClientHandler clientHandler, String login, String password) {
-        String authUsername = getUsernameByLoginAndPassword(login, password);
-        if (authUsername == null) {
+        try (Connection connection = DriverManager.getConnection(DB_URL, DB_USERNAME, DB_PASSWORD);
+             PreparedStatement statement = connection.prepareStatement(SQL_AUTH)) {
+
+            statement.setString(1, login);
+            statement.setString(2, password);
+
+            try (ResultSet rs = statement.executeQuery()) {
+                if (rs.next()) {
+                    String username = rs.getString("username");
+                    if (server.isUsernameBusy(username)) {
+                        clientHandler.sendMsg("Данная учетная запись уже занята");
+                        return false;
+                    }
+
+                    ClientHandler.Role role = getRoleByUsername(connection, username);
+                    clientHandler.setRole(role);
+                    clientHandler.setUsername(username);
+                    server.subscribe(clientHandler);
+                    clientHandler.sendMsg("/authok " + username);
+                    return true;
+                }
+            }
+
             clientHandler.sendMsg("Некорректный логин/пароль");
-            return false;
+        } catch (SQLException e) {
+            e.printStackTrace();
+            clientHandler.sendMsg("Ошибка аутентификации. Попробуйте позже.");
         }
-
-        if (server.isUsernameBusy(authUsername)) {
-            clientHandler.sendMsg("Данная учетная запись уже занята");
-            return false;
-        }
-
-        ClientHandler.Role role = getRoleByUsername(authUsername);
-        clientHandler.setRole(role);
-
-        clientHandler.setUsername(authUsername);
-        server.subscribe(clientHandler);
-        clientHandler.sendMsg("/authok " + authUsername);
-        return true;
+        return false;
     }
 
     @Override
     public boolean registration(ClientHandler clientHandler, String login, String password, String username) {
         if (login.trim().length() < 3 || password.trim().length() < 3 || username.trim().length() < 3) {
-            clientHandler.sendMsg("Логин 3+ символа, пароль 3+ символа, имя пользователя 3+ символа");
+            clientHandler.sendMsg("Логин, пароль и имя пользователя должны быть не короче 3 символов.");
             return false;
         }
 
-        if (isLoginAlreadyExist(login)) {
-            clientHandler.sendMsg("Указанный логин уже занят");
-            return false;
-        }
+        try (Connection connection = DriverManager.getConnection(DB_URL, DB_USERNAME, DB_PASSWORD)) {
 
-        if (isUsernameAlreadyExist(username)) {
-            clientHandler.sendMsg("Указанное имя пользователя уже занято");
-            return false;
-        }
+            if (isLoginAlreadyExist(connection, login)) {
+                clientHandler.sendMsg("Указанный логин уже занят");
+                return false;
+            }
 
-        String sql = "INSERT INTO users (login, password, username) VALUES (?, ?, ?)";
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
-            stmt.setString(1, login);
-            stmt.setString(2, password);
-            stmt.setString(3, username);
-            stmt.executeUpdate();
+            if (isUsernameAlreadyExist(connection, username)) {
+                clientHandler.sendMsg("Указанное имя пользователя уже занято");
+                return false;
+            }
 
-            assignDefaultRole(username);
+            try (PreparedStatement statement = connection.prepareStatement(SQL_INSERT_USER)) {
+                statement.setString(1, login);
+                statement.setString(2, password);
+                statement.setString(3, username);
+                statement.executeUpdate();
+            }
 
             clientHandler.setUsername(username);
             server.subscribe(clientHandler);
             clientHandler.sendMsg("/regok " + username);
             return true;
+
         } catch (SQLException e) {
             e.printStackTrace();
+            clientHandler.sendMsg("Ошибка регистрации. Попробуйте позже.");
+            return false;
         }
-        return false;
     }
 
-    private void assignDefaultRole(String username) {
-        try {
-            String getUserIdSql = "SELECT id FROM users WHERE username = ?";
-            PreparedStatement stmt1 = connection.prepareStatement(getUserIdSql);
-            stmt1.setString(1, username);
-            ResultSet rs = stmt1.executeQuery();
-            if (rs.next()) {
-                int userId = rs.getInt("id");
-
-                String getRoleIdSql = "SELECT id FROM roles WHERE role_name = 'USER'";
-                PreparedStatement stmt2 = connection.prepareStatement(getRoleIdSql);
-                ResultSet rs2 = stmt2.executeQuery();
-
-                if (rs2.next()) {
-                    int roleId = rs2.getInt("id");
-
-                    String insertSql = "INSERT INTO users_roles (user_id, role_id) VALUES (?, ?)";
-                    PreparedStatement stmt3 = connection.prepareStatement(insertSql);
-                    stmt3.setInt(1, userId);
-                    stmt3.setInt(2, roleId);
-                    stmt3.executeUpdate();
-                }
-                rs2.close();
-                stmt2.close();
+    private boolean isLoginAlreadyExist(Connection connection, String login) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(SQL_CHECK_LOGIN)) {
+            statement.setString(1, login);
+            try (ResultSet rs = statement.executeQuery()) {
+                return rs.next();
             }
-            rs.close();
-            stmt1.close();
+        }
+    }
+
+    private boolean isUsernameAlreadyExist(Connection connection, String username) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(SQL_CHECK_USERNAME)) {
+            statement.setString(1, username);
+            try (ResultSet rs = statement.executeQuery()) {
+                return rs.next();
+            }
+        }
+    }
+
+    private ClientHandler.Role getRoleByUsername(Connection connection, String username) {
+        try (PreparedStatement statement = connection.prepareStatement(SQL_GET_ROLE)) {
+            statement.setString(1, username);
+            try (ResultSet rs = statement.executeQuery()) {
+                if (rs.next()) {
+                    String role = rs.getString("role");
+                    if ("ADMIN".equalsIgnoreCase(role)) {
+                        return ClientHandler.Role.ADMIN;
+                    }
+                }
+            }
         } catch (SQLException e) {
             e.printStackTrace();
         }
+        return ClientHandler.Role.USER;
     }
 }
